@@ -1,5 +1,5 @@
 # CASSIMAN & VEUGELERS LOGIT REGRESSIONS FOR TABLE 2
-# 1 sec
+# 6 sec
 
 # Packages
 library(openxlsx)
@@ -10,30 +10,36 @@ t0 = Sys.time()
 
 # Parameters
 prob.threshold = 0.5
-path.metadata = "../Data/01 Metadata/"
 path.database = "../Database/"
 path.predictions = "../Data/04 First-stage predictions/"
 path.results = "../Results/"
-file.metadata = "Metadata Thesis.xlsx"
-file.database = "ENI Innovating Firms.xlsx"
+file.table1 = "Table 1.xlsx"
+file.database = "ENI Chile 2020.xlsx"
 file.predictions = "First-stage predictions.xlsx"
 file.table2 = "Table 2 - Logit.xlsx"
+file.marginal = "Table 3 - Logit Marginal Effects.xlsx"
 
 # Functions
 source("Functions.R")
 
-# Load metadata and data
-df_variables = read.xlsx(paste0(path.metadata, file.metadata), sheet = "Variables")
-instruments = df_variables[df_variables$Role.in.Dataset=="Instrument" & !is.na(df_variables$Table2), "Variable.R"]
-instruments = paste(instruments, collapse = " + ")
+# Load Table 1 results and data
+df_table1 = read.xlsx(paste0(path.results, file.table1))
+df_table1$Variable = gsub(" ", ".", df_table1$Variable)
+df_table1$Variable = gsub("R&D", "RD", df_table1$Variable)
+df_table1 = df_table1[df_table1$Variable!="Incoming.Spillovers", ]
+df_table1 = df_table1[!is.na(df_table1$Variable), ]
 df_data = read.xlsx(paste0(path.database, file.database))
 
+# Read instrumental and explanatory variables
+instruments.s = df_table1[df_table1$Role.in.Logit.Regression %in% c("Instrument for Inc. Spill", "Instrument for Inc. Spill & App"), "Variable"]
+instruments.a = df_table1[df_table1$Role.in.Logit.Regression %in% c("Instrument for App", "Instrument for Inc. Spill & App"), "Variable"]
+explanatory.c = df_table1[df_table1$Role.in.Logit.Regression %in% "Explanatory", "Variable"]
+
 # Create dataframe for regression results (Table 2)
-variables = df_variables[!is.na(df_variables$Table2), "Variable.R"]
-variables = intersect(variables, names(df_data)) # Only explanatory and instrumental variables that are included in the database.
-nv = length(variables)
+explanatory = c("Incoming.Spillovers", "Appropriability", explanatory.c)
+nv = length(explanatory)
 variable.rows = rep("", 2*nv)
-variable.rows[2*(1:nv)-1] = variables
+variable.rows[2*(1:nv)-1] = explanatory
 df_table2 = data.frame(  Variable = c(variable.rows, "Accuracy", "Specificity", "Sensitivity")
                        , R1 = NA
                        , R2 = NA
@@ -41,7 +47,6 @@ df_table2 = data.frame(  Variable = c(variable.rows, "Accuracy", "Specificity", 
                        , R4 = NA
                        , R5 = NA
                        , R6 = NA
-                       , R7 = NA
                        )
 row.names = variable.rows
 nr = length(row.names)
@@ -52,17 +57,35 @@ row.names[seq(2,nr,2)] = paste0(row.names[seq(2,nr,2)], ".Std.Error")
 row.names = c(row.names, "Accuracy", "Specificity", "Sensitivity")
 row.names(df_table2) = row.names
 
-# Stage 1 for 2SLS regressions 4-7: predict explanatory variables from instruments
-mod1 = lm(data = df_data, formula = paste0("Incoming.Spillovers ~ ", instruments))
-df_data$Incoming.Spillovers.Hat = predict.lm(object = mod1, newdata = df_data)
-mod1 = lm(data = df_data, formula = paste0("Appropriability ~ ", instruments))
-df_data$Appropriability.Hat = predict.lm(object = mod1, newdata = df_data)
-mod1 = lm(data = df_data, formula = paste0("RD ~ ", instruments))
-df_data$RD.Hat = predict.lm(object = mod1, newdata = df_data)
+# Calculate means of explanatory variables, for calculating marginal effects. Exclude Appropriability
+explanatory.noapp = c("Incoming.Spillovers", explanatory.c) # Explanatory variables without Appropriability
+df = df_data[, explanatory.noapp]
+means = apply(df, MARGIN = 2, FUN = mean)
+means.intercept = c(1, means) # Add 1 to multiply by intercept
 
-# Regression (1)
-# Cooperation.Bin on instruments only
-formula = paste0("Cooperation.Bin ~ ", instruments)
+# Create dataframe for marginal effects
+df_marginal = data.frame(  Variable = explanatory.noapp
+                         , Mean = round(means, 2)
+                         , R2 = NA
+                         , R4 = NA
+                         , R2.10 = NA
+                         , R4.10 = NA
+                         )
+
+# Stage 1 for 2SLS regressions 4-7: predict explanatory variables from instruments
+# 2 sets of predicted values for Incoming.Spillovers: with and without Appropriability
+# Incoming.Spillovers.Hat1 is predicted without Appropriability as instrument
+# Incoming.Spillovers.Hat2 is predicted with Appropriability as instrument
+mod1 = lm(data = df_data, formula = paste0("Incoming.Spillovers ~ ", paste(instruments.s, collapse = " + ")))
+df_data$Incoming.Spillovers.Hat1 = predict.lm(object = mod1, newdata = df_data)
+mod1 = lm(data = df_data, formula = paste0("Incoming.Spillovers ~ Appropriability + ", paste(instruments.s, collapse = " + ")))
+df_data$Incoming.Spillovers.Hat2 = predict.lm(object = mod1, newdata = df_data)
+mod1 = lm(data = df_data, formula = paste0("Appropriability ~ ", paste(instruments.a, collapse = " + ")))
+df_data$Appropriability.Hat = predict.lm(object = mod1, newdata = df_data)
+
+# Regression (1) Logit
+# Cooperation.Bin on all explanatory variables
+formula = paste("Cooperation.Bin ~ Incoming.Spillovers + Appropriability +", paste(explanatory.c, collapse = " + "))
 mod = glm(data = df_data, formula = formula, family = binomial(link = "logit"))
 df_coeff = summary(mod)$coefficients
 var = setdiff(row.names(df_coeff), "(Intercept)")
@@ -79,9 +102,9 @@ df_table2["Accuracy", "R1"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / su
 df_table2["Specificity", "R1"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
 df_table2["Sensitivity", "R1"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
 
-# Regression (2)
-# Cooperation.Bin on explanatory variables and instruments
-formula = paste0("Cooperation.Bin ~ Incoming.Spillovers + Appropriability + RD + ", instruments)
+# Regression (2) Logit without Appropriability
+# Cooperation.Bin on all explanatory variables EXCEPT Appropriability
+formula = paste("Cooperation.Bin ~ Incoming.Spillovers +", paste(explanatory.c, collapse = " + "))
 mod = glm(data = df_data, formula = formula, family = binomial(link = "logit"))
 df_coeff = summary(mod)$coefficients
 var = setdiff(row.names(df_coeff), "(Intercept)")
@@ -97,12 +120,20 @@ mat_confusion = table(df_data[, c("Cooperation.Bin", "Cooperation.Hat")])
 df_table2["Accuracy", "R2"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / sum(mat_confusion), 2)
 df_table2["Specificity", "R2"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
 df_table2["Sensitivity", "R2"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
+# Marginal effects
+b0b = df_coeff[, "Estimate"] # Coefficients including intercept
+b = b0b[names(b0b) != "(Intercept)"] # Coefficients without intercept
+z = sum(b0b * means.intercept) # Multiply coefficients x means
+df_marginal[, "R2"] = round(exp(-z)/(1+exp(-z))^2 * b, 4)
+df_marginal$R2.10 = df_marginal$R2 * 10
 
-# Regression (3)
-# Cooperation.Bin on explanatory variables without RD, and instruments
-formula = paste0("Cooperation.Bin ~ Incoming.Spillovers + Appropriability + ", instruments)
+# Regression (3) 2-Step with Appropriability as Explanatory
+# Same as (1) but two-stage
+formula = paste("Cooperation.Bin ~ Incoming.Spillovers.Hat1 + Appropriability.Hat +", paste(explanatory.c, collapse = " + "))
 mod = glm(data = df_data, formula = formula, family = binomial(link = "logit"))
 df_coeff = summary(mod)$coefficients
+row.names(df_coeff) = gsub(".Hat1", "", row.names(df_coeff)) # Remove ".Hat1" suffix from row names.
+row.names(df_coeff) = gsub(".Hat", "", row.names(df_coeff)) # Remove ".Hat" suffix from row names.
 var = setdiff(row.names(df_coeff), "(Intercept)")
 for (v in var){
   print(v)
@@ -117,11 +148,12 @@ df_table2["Accuracy", "R3"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / su
 df_table2["Specificity", "R3"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
 df_table2["Sensitivity", "R3"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
 
-# Regression (4)
+# Regression (4) 2-Step with Appropriability as Instrument
 # Same as (2) but two-stage
-mod = glm(data = df_data, formula = Cooperation.Bin ~ Incoming.Spillovers.Hat + Appropriability.Hat + RD.Hat, family = binomial(link = "logit"))
+formula = paste("Cooperation.Bin ~ Incoming.Spillovers.Hat2 +", paste(explanatory.c, collapse = " + "))
+mod = glm(data = df_data, formula = formula, family = binomial(link = "logit"))
 df_coeff = summary(mod)$coefficients
-row.names(df_coeff) = gsub(".Hat", "", row.names(df_coeff)) # Remove ".Hat" suffix from row names.
+row.names(df_coeff) = gsub(".Hat2", "", row.names(df_coeff)) # Remove ".Hat2" suffix from row names.
 var = setdiff(row.names(df_coeff), "(Intercept)")
 for (v in var){
   print(v)
@@ -135,11 +167,19 @@ mat_confusion = table(df_data[, c("Cooperation.Bin", "Cooperation.Hat")])
 df_table2["Accuracy", "R4"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / sum(mat_confusion), 2)
 df_table2["Specificity", "R4"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
 df_table2["Sensitivity", "R4"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
+# Marginal effects
+b0b = df_coeff[, "Estimate"] # Coefficients including intercept
+b = b0b[names(b0b) != "(Intercept)"] # Coefficients without intercept
+z = sum(b0b * means.intercept) # Multiply coefficients x means
+df_marginal[, "R4"] = round(exp(-z)/(1+exp(-z))^2 * b, 4)
+df_marginal$R4.10 = df_marginal$R4 * 10
 
-# Regression (5)
-# Same as (3) but two-stage
-mod = glm(data = df_data, formula = Cooperation.Bin ~ Incoming.Spillovers.Hat + Appropriability.Hat, family = binomial(link = "logit"))
+# Regression (5) Cooperation with Suppliers and Customers (2-Step)
+# Dependent variable is Cooperation.Firms.Bin. Appropriability is excluded from the model.
+formula = paste("Cooperation.Firms.Bin ~ Incoming.Spillovers.Hat2 +", paste(explanatory.c, collapse = " + "))
+mod = glm(data = df_data, formula = formula, family = binomial(link = "logit"))
 df_coeff = summary(mod)$coefficients
+row.names(df_coeff) = gsub(".Hat2", "", row.names(df_coeff)) # Remove ".Hat2" suffix from row names.
 row.names(df_coeff) = gsub(".Hat", "", row.names(df_coeff)) # Remove ".Hat" suffix from row names.
 var = setdiff(row.names(df_coeff), "(Intercept)")
 for (v in var){
@@ -155,10 +195,12 @@ df_table2["Accuracy", "R5"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / su
 df_table2["Specificity", "R5"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
 df_table2["Sensitivity", "R5"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
 
-# Regression (6)
-# Dependent variable is Cooperation.Firms.Bin
-mod = glm(data = df_data, formula = Cooperation.Firms.Bin ~ Incoming.Spillovers.Hat + Appropriability.Hat + RD.Hat, family = binomial(link = "logit"))
+# Regression (6) Cooperation with Research Institutions (2-Step)
+# Dependent variable is Cooperation.Universities.Bin. Appropriability is excluded from the model.
+formula = paste("Cooperation.Universities.Bin ~ Incoming.Spillovers.Hat2 +", paste(explanatory.c, collapse = " + "))
+mod = glm(data = df_data, formula = formula, family = binomial(link = "logit"))
 df_coeff = summary(mod)$coefficients
+row.names(df_coeff) = gsub(".Hat2", "", row.names(df_coeff)) # Remove ".Hat2" suffix from row names.
 row.names(df_coeff) = gsub(".Hat", "", row.names(df_coeff)) # Remove ".Hat" suffix from row names.
 var = setdiff(row.names(df_coeff), "(Intercept)")
 for (v in var){
@@ -174,32 +216,18 @@ df_table2["Accuracy", "R6"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / su
 df_table2["Specificity", "R6"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
 df_table2["Sensitivity", "R6"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
 
-# Regression (7)
-# Dependent variable is Cooperation.Universities.Bin
-mod = glm(data = df_data, formula = Cooperation.Universities.Bin ~ Incoming.Spillovers.Hat + Appropriability.Hat + RD.Hat, family = binomial(link = "logit"))
-df_coeff = summary(mod)$coefficients
-row.names(df_coeff) = gsub(".Hat", "", row.names(df_coeff)) # Remove ".Hat" suffix from row names.
-var = setdiff(row.names(df_coeff), "(Intercept)")
-for (v in var){
-  print(v)
-  p = df_coeff[v, 4]
-  df_table2[paste0(v, ".Estimate"), "R7"] = paste(round(df_coeff[v, "Estimate"], 4), asterisk(p))
-  df_table2[paste0(v, ".Std.Error"), "R7"] = paste0("(", round(df_coeff[v, "Std. Error"], 4), ")")
-}
-df_data$Cooperation.Prob = predict.glm(object = mod, newdata = df_data, type = "response")
-df_data$Cooperation.Hat = ifelse(df_data$Cooperation.Prob > prob.threshold, 1, 0)
-mat_confusion = table(df_data[, c("Cooperation.Bin", "Cooperation.Hat")])
-df_table2["Accuracy", "R7"] = round((mat_confusion[1,1]+mat_confusion[2,2]) / sum(mat_confusion), 2)
-df_table2["Specificity", "R7"] = round(mat_confusion[1,1]/sum(mat_confusion[1,]), 2)
-df_table2["Sensitivity", "R7"] = round(mat_confusion[2,2]/sum(mat_confusion[2,]), 2)
-
 # Format and save to results folder
-names(df_table2) = c("Variable", "(1)", "(2)", "(3)", "(4) (2-Step)", "(5) (2-Step)", "(6) Cooperation with suppliers and customers (2-Step)", "(7) Cooperation with research institutions (2-Step)")
+names(df_table2) = c("Variable", "(1) Logit", "(2) Logit without Appropriability", "(3) 2-Step with Appropriability as Explanatory", "(4) 2-Step with Appropriability as Instrument",  "(5) Cooperation with Suppliers and Customers (2-Step)", "(6) Cooperation with Research Institutions (2-Step)")
+names(df_marginal) = c("Variable", "Mean", "(2) Logit without Appropriability", "(4) (2-Step) with Appropriability as Explanatory", "(2) x10", "(4) (2-Step) x10")
 df_table2$Variable = gsub(".Scaled", "", df_table2$Variable)
 df_table2$Variable = gsub(".", " ", df_table2$Variable, fixed = T)
+df_table2$Variable = gsub("RD", "R&D", df_table2$Variable, fixed = T)
 names(df_table2) = gsub(".", " ", names(df_table2), fixed = T)
+df_marginal$Variable = gsub(".", " ", df_marginal$Variable, fixed = T)
+df_marginal$Variable = gsub("RD", "R&D", df_marginal$Variable, fixed = T)
 hs = createStyle(textDecoration = "bold", fgFill = "#DDEBF7", wrapText = T)
 write.xlsx(df_table2, file = paste0(path.results, file.table2), firstRow = T, colWidths = 15, headerStyle = hs)
+write.xlsx(df_marginal, file = paste0(path.results, file.marginal), firstRow = T, colWidths = 15, headerStyle = hs)
 
 # Show time taken
 print(Sys.time() - t0)

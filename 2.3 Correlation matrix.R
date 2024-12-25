@@ -18,7 +18,7 @@ path.metadata = "../Data/01 Metadata/"
 path.database = "../Database/"
 path.result = "../Results/"
 file.metadata = "Metadata Thesis.xlsx"
-file.database = "ENI Innovating Firms.xlsx"
+file.database = "ENI Chile 2020.xlsx"
 file.result = "Correlation Matrix.xlsx"
 
 # 1. Load metadata and data
@@ -27,10 +27,9 @@ df_data = read.xlsx(paste0(path.database, file.database))
 
 # 2. Select variables for correlation table
 select.cols = df_variables[  !is.na(df_variables$Include.in.DB) 
-                           & df_variables$Role.in.Dataset %in% c("Dependent", "Explanatory", "Instrument") 
-                           & df_variables$Data.Type == "Numeric"
+                           & df_variables$Role.in.Dataset %in% c("Dependent", "Endogenous", "Exogenous") 
+                           & df_variables$Data.Type == "Continuous"
                            & !(df_variables$Variable.R %in% c("Cooperation.Firms", "Cooperation.Universities")) # Exclude obviously correlated variables
-                           & !(df_variables$Variable.R %in% c("Innovation", "Innovation.Bin")) # Exclude innovation which is used to select sample
                            & !grepl(".Scaled", df_variables$Variable.R)
                            , "Variable.R"]
 

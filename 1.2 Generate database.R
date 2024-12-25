@@ -12,19 +12,21 @@ t0 = Sys.time()
 # Parameters
 path.metadata = "../Data/01 Metadata/"
 path.source = "../Data/02 Source/"
+path.master = "../Data/03 Master Tables/"
 path.database = "../Database/"
 file.metadata = "Metadata Thesis.xlsx"
+file.master = "Master Tables.xlsx"
 file.source = "2019-2020-ENI-base-de-datos-sector-economico.xlsx"
-file.all.firms = "ENI All Firms.xlsx"
-file.innovating.firms = "ENI Innovating Firms.xlsx"
+file.innovating.firms = "ENI Chile 2020.xlsx"
 
 # 1. Load metadata and data
 df_variables = read.xlsx(paste0(path.metadata, file.metadata), sheet = "Variables")
+df_industry = read.xlsx(paste0(path.master, file.master), sheet = "Industry")[, c("Industry.ID", "Short.Name")]
 columns = df_variables[df_variables$Source=="Data", "Variable.ID"]
 df_data = read.xlsx(paste0(path.source, file.source))[, columns]
 df_data = as.data.frame(df_data)
 
-# 2. Convert all numeric columns to numeric.
+# 2. Convert all numeric columns to numeric
 columns.numeric = df_variables[df_variables$Data.Type!="Categorical" & df_variables$Source=="Data", "Variable.ID"]
 for (c in columns.numeric){
   if (class(df_data[, c])=="character"){
@@ -63,30 +65,35 @@ for (i in 1:nf){
   eval(parse(text = Rtxt))
 }
 
-# 6. Keep only columns that have been defined to include in DB, and change names
-column.id = df_variables[!is.na(df_variables$Include.in.DB) & is.na(df_variables$Group.By), "Variable.ID"]
-df_data = df_data[, column.id]
-names(df_data) = df_variables[!is.na(df_variables$Include.in.DB) & is.na(df_variables$Group.By), "Variable.R"]
+# 6. Keep innovative firms only
+# df_data = df_data[df_data$Innovation > 0, ]
 
 # 7. Add industry-level aggregated variables (Formula 3)
 agg.variables = df_variables[!is.na(df_variables$Group.By), "Variable.R"]
 agg.formulas = df_variables[!is.na(df_variables$Group.By), "Formula"]
 sqltxt = paste0(agg.formulas, " as [", agg.variables, "]", collapse = ", ")
-sqltxt = paste("select [ISIC.Economic.Sector],", sqltxt, "from df_data group by [ISIC.Economic.Sector]")
+sqltxt = paste("select [COD_ACTIVIDAD],", sqltxt, "from df_data group by [COD_ACTIVIDAD]")
 df_aggregated = sqldf(sqltxt)
 df_data = merge(df_data, df_aggregated, all.x = T)
-nc = ncol(df_data)
-df_data = df_data[, c(2,1,3:nc)]
 
-# 8. Extract innovating firms
-df_innovating.firms = df_data[df_data$Innovation.Bin==1, ]
+# 8. Create industry dummy variables
+df_data = merge(df_data, df_industry, by.x = "COD_ACTIVIDAD", by.y = "Industry.ID", all.x = T)
+df_data$Short.Name = gsub(" ", ".", df_data$Short.Name, fixed = T)
+dummies = unique(df_data$Short.Name)
+for (d in dummies){
+  print(d)
+  Rtxt = paste0("df_data$", d, " = ifelse(df_data$Short.Name == '", d, "', 1, 0)")
+  eval(parse(text = Rtxt))
+}
 
-# 9. Format and save to database
+# 9. Keep only columns that have been defined to include in DB
+column.id = df_variables[!is.na(df_variables$Include.in.DB), "Variable.R"]
+df_data = df_data[, column.id]
+
+# 10. Format and save to database
 names(df_data) = gsub(".", " ", names(df_data), fixed = T)
-names(df_innovating.firms) = gsub(".", " ", names(df_innovating.firms), fixed = T)
 hs = createStyle(textDecoration = "bold", fgFill = "#DDEBF7", wrapText = T)
-write.xlsx(df_data, file = paste0(path.database, file.all.firms), firstRow = T, colWidths = 15, headerStyle = hs)
-write.xlsx(df_innovating.firms, file = paste0(path.database, file.innovating.firms), firstRow = T, colWidths = 15, headerStyle = hs)
+write.xlsx(df_data, file = paste0(path.database, file.innovating.firms), firstRow = T, colWidths = 15, headerStyle = hs)
 
 # Show time taken
 print(Sys.time() - t0)

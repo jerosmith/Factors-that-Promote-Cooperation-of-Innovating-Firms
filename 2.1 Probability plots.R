@@ -15,7 +15,7 @@ path.metadata = "../Data/01 Metadata/"
 path.database = "../Database/"
 path.plots = "../Results/Probability Plots/"
 file.metadata = "Metadata Thesis.xlsx"
-file.database = "ENI Innovating Firms.xlsx"
+file.database = "ENI Chile 2020.xlsx"
 alpha = 0.05
 z = -qnorm(alpha/2)
 nudge.up = 0.02
@@ -27,7 +27,7 @@ df_variables = read.xlsx(paste0(path.metadata, file.metadata), sheet = "Variable
 df_data = read.xlsx(paste0(path.database, file.database))
 
 # 2. Make plots
-dummy = df_variables[!is.na(df_variables$Include.in.DB) & df_variables$Role.in.Dataset %in% c("Explanatory", "Instrument") & df_variables$Data.Type=="Dummy", "Variable.R"]
+dummy = df_variables[!is.na(df_variables$Include.in.DB) & df_variables$Role.in.Dataset %in% c("Descriptive", "Instrument") & df_variables$Data.Type=="Dummy", "Variable.R"]
 for (d in dummy){
   print(d)
   df = df_data[, c("Cooperation.Bin", d)]

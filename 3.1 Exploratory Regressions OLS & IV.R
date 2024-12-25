@@ -10,7 +10,7 @@ t0 = Sys.time()
 
 # Parameters
 path.database = "../Database/"
-file.database = "ENI Innovating Firms.xlsx"
+file.database = "ENI Chile 2020.xlsx"
 
 # Load data
 df_data = read.xlsx(paste0(path.database, file.database))
@@ -29,27 +29,35 @@ summary(mod)
 mod = lm(data = df_data, formula = Cooperation ~ Incoming.Spillovers + Appropriability)
 summary(mod)
 
-# 4. OLS Cooperation ~ Incoming.Spillovers + Appropriability + Instruments
-mod = lm(data = df_data, formula = Cooperation ~ Incoming.Spillovers + Appropriability + RD + Size + Basicness.RD + Cost + Risk + Complementarities)
+# 4. IV Cooperation ~ Incoming.Spillovers | Appropriability
+mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers | Appropriability)
+summary(mod, diagnostics = T)
+
+# 5. IV Cooperation ~ Incoming.Spillovers + Control Explanatory Variables | Appropriability
+mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers + Innovation + RD + Basicness.RD + Personnel.Scaled + Industry.Cooperation + Industry.Incoming.Spillovers | Appropriability + Innovation.Bin + Size.Scaled + Size2.Scaled + Cost + Agriculture + Innovation + RD + Basicness.RD + Personnel.Scaled + Industry.Cooperation + Industry.Incoming.Spillovers)
+summary(mod, diagnostics = T)
+
+
+
+
+
+# 4. OLS Cooperation ~ Incoming.Spillovers + Appropriability + Control Explanatory Variables
+mod = lm(data = df_data, formula = Incoming.Spillovers ~ Appropriability + RD + Basicness.RD + Industry.Cooperation + Industry.Incoming.Spillovers)
 summary(mod)
 
-# 5. IV with RD as instrument
-mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers | RD)
+# 5. IV with Innovation as instrument, exogenous not specified with instruments
+mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers + Appropriability + RD | Innovation + Appropriability + RD)
 summary(mod, diagnostics = T)
 
-# 6. IV with Basicness.RD as instrument
-mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers | Basicness.RD)
+# 6. IV with Innovation as instrument, exogenous specified with instruments
+mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers + RD | Innovation + RD)
 summary(mod, diagnostics = T)
 
-# 7. IV with Incoming.Spillovers and Appropriablity, with two instruments: RD and Basicness.RD
-mod = ivreg(data = df_data, formula = Cooperation ~ Incoming.Spillovers + Appropriability | RD + Basicness.RD)
-summary(mod, diagnostics = T)
-
-# 5B 2SLS
-mod1 = lm(data = df_data, formula = Incoming.Spillovers ~ RD)
+# 5 2SLS
+mod1 = lm(data = df_data, formula = Incoming.Spillovers ~ Innovation)
 summary(mod1)
 df_data$Incoming.Spillovers.Hat = predict.lm(object = mod1)
-mod2 = lm(data = df_data, formula = Cooperation ~ Incoming.Spillovers.Hat)
+mod2 = lm(data = df_data, formula = Cooperation ~ Incoming.Spillovers.Hat + RD)
 summary(mod2)
 
 # 6B 2SLS
