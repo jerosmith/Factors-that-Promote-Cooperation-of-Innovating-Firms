@@ -11,11 +11,9 @@ t0 = Sys.time()
 
 # Parameters
 path.database = "../Database/"
-path.predictions = "../Data/04 First-stage predictions/"
 path.results = "../Results/"
 file.table1 = "Table 1.xlsx"
 file.database = "ENI Chile 2020.xlsx"
-file.predictions = "First-stage predictions.xlsx"
 file.table4 = "Table 4 - Linear.xlsx"
 
 # Functions
@@ -33,6 +31,7 @@ df_data = read.xlsx(paste0(path.database, file.database))
 instruments.s = df_table1[df_table1$Role.in.OLS.Regression %in% c("Instrument for Inc. Spill", "Instrument for Inc. Spill & App"), "Variable"]
 instruments.a = df_table1[df_table1$Role.in.OLS.Regression %in% c("Instrument for App", "Instrument for Inc. Spill & App"), "Variable"]
 explanatory.c = df_table1[df_table1$Role.in.OLS.Regression %in% "Explanatory", "Variable"]
+explanatory.c = setdiff(explanatory.c, "Appropriability")
 
 # Create dataframe for regression results (Table 3)
 explanatory = c("Incoming.Spillovers", "Appropriability", explanatory.c)

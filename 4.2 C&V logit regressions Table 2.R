@@ -11,11 +11,9 @@ t0 = Sys.time()
 # Parameters
 prob.threshold = 0.5
 path.database = "../Database/"
-path.predictions = "../Data/04 First-stage predictions/"
 path.results = "../Results/"
 file.table1 = "Table 1.xlsx"
 file.database = "ENI Chile 2020.xlsx"
-file.predictions = "First-stage predictions.xlsx"
 file.table2 = "Table 2 - Logit.xlsx"
 file.marginal = "Table 3 - Logit Marginal Effects.xlsx"
 
@@ -34,6 +32,7 @@ df_data = read.xlsx(paste0(path.database, file.database))
 instruments.s = df_table1[df_table1$Role.in.Logit.Regression %in% c("Instrument for Inc. Spill", "Instrument for Inc. Spill & App"), "Variable"]
 instruments.a = df_table1[df_table1$Role.in.Logit.Regression %in% c("Instrument for App", "Instrument for Inc. Spill & App"), "Variable"]
 explanatory.c = df_table1[df_table1$Role.in.Logit.Regression %in% "Explanatory", "Variable"]
+explanatory.c = setdiff(explanatory.c, "Appropriability")
 
 # Create dataframe for regression results (Table 2)
 explanatory = c("Incoming.Spillovers", "Appropriability", explanatory.c)
